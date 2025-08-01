@@ -19,9 +19,11 @@ namespace AuthAPI.Controllers
     public class RolesController : ControllerBase
     {
 
+        // 
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly UserManager<AppUser> _userManager;
 
+        // 
         public RolesController(RoleManager<IdentityRole> roleManager, UserManager<AppUser> userManager)
         {
             _roleManager = roleManager;
