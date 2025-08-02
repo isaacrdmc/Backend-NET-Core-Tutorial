@@ -11,6 +11,12 @@ using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Net;
+using System.Security.Cryptography;
+
+
+
+
 
 namespace AuthAPI.Controllers
 {
@@ -31,6 +37,7 @@ namespace AuthAPI.Controllers
         }
 
         // api/account/register
+        [AllowAnonymous]
         [HttpPost("register")]
         public async Task<ActionResult<string>> Register(RegisterDto registerDto)
         {
@@ -73,13 +80,8 @@ namespace AuthAPI.Controllers
         }
 
 
-
-
-
-
-
         // Creamos un nuevo metodo para el login:
-        //api/account/login
+        [AllowAnonymous]
         [HttpPost("login")]
         public async Task<ActionResult<AuthResponseDto>> Login(LoginDto loginDto)
         {
@@ -114,14 +116,166 @@ namespace AuthAPI.Controllers
 
             // Genermaos el token del usuairos si este existe
             var token = GenerateToken(user);
+            var refreshToken = GenerateRefreshToken();
+            _ = int.TryParse(_configuration.GetSection("JWTSetting").GetSection("RefreshTokenValidityIn").Value!, out int RefreshTokenValidityIn);
+            user.RefreshToken = refreshToken;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddMinutes(RefreshTokenValidityIn);
+            await _userManager.UpdateAsync(user);
 
             return Ok(new AuthResponseDto
             {
                 Token = token,
                 IsSuccess = true,
-                Message = "Login Success"
+                Message = "Login Success.",
+                RefreshToken = refreshToken
             });
         }
+
+        
+
+
+
+
+        [AllowAnonymous]
+        [HttpPost("refresh-token")]
+        public async Task<ActionResult<AuthResponseDto>> RefreshToken(TokenDto tokenDto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var principal = GetPrincipalFromExpiredToken(tokenDto.Token);
+            var user = await _userManager.FindByEmailAsync(tokenDto.Email);
+
+            if (principal is null || user is null || user.RefreshToken != tokenDto.RefreshToken || user.RefreshTokenExpiryTime <= DateTime.UtcNow)
+                return BadRequest(new AuthResponseDto
+                {
+                    IsSuccess = false,
+                    Message = "Invalid client request"
+                });
+
+            var newJwtToken = GenerateToken(user);
+            var newRefreshToken = GenerateRefreshToken();
+            _ = int.TryParse(_configuration.GetSection("JWTSetting").GetSection("RefreshTokenValidityIn").Value!, out int RefreshTokenValidityIn);
+
+            user.RefreshToken = newRefreshToken;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddMinutes(RefreshTokenValidityIn);
+
+            await _userManager.UpdateAsync(user);
+
+            return Ok(new AuthResponseDto
+            {
+                IsSuccess = true,
+                Token = newJwtToken,
+                RefreshToken = newRefreshToken,
+                Message = "Refreshed token successfully"
+            });
+
+
+
+
+        }
+
+        private ClaimsPrincipal? GetPrincipalFromExpiredToken(string token)
+        {
+            var tokenParameters = new TokenValidationParameters
+            {
+                ValidateAudience = false,
+                ValidateIssuer = false,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration.GetSection("JwtSetting").GetSection("securityKey").Value!)),
+                ValidateLifetime = false
+
+
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var principal = tokenHandler.ValidateToken(token, tokenParameters, out SecurityToken securityToken);
+
+            if (securityToken is not JwtSecurityToken jwtSecurityToken || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+                throw new SecurityTokenException("Invalid token");
+
+            return principal;
+        }
+
+
+        [AllowAnonymous]
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword(ResetPasswordDto resetPasswordDto)
+        {
+            var user = await _userManager.FindByEmailAsync(resetPasswordDto.Email);
+            // resetPasswordDto.Token = WebUtility.UrlDecode(resetPasswordDto.Token);
+
+            if (user is null)
+            {
+                return BadRequest(new AuthResponseDto
+                {
+                    IsSuccess = false,
+                    Message = "User does not exist with this email"
+                });
+            }
+
+            var result = await _userManager.ResetPasswordAsync(user, resetPasswordDto.Token, resetPasswordDto.NewPassword);
+
+            if (result.Succeeded)
+            {
+                return Ok(new AuthResponseDto
+                {
+                    IsSuccess = true,
+                    Message = "Password reset Successfully"
+                });
+            }
+
+            return BadRequest(new AuthResponseDto
+            {
+                IsSuccess = false,
+                Message = result.Errors.FirstOrDefault()!.Description
+            });
+        }
+
+
+        [HttpPost("change-password")]
+        public async Task<ActionResult> ChangePassword(ChangePasswordDto changePasswordDto)
+        {
+            var user = await _userManager.FindByEmailAsync(changePasswordDto.Email);
+            if (user is null)
+            {
+                return BadRequest(new AuthResponseDto
+                {
+                    IsSuccess = false,
+                    Message = "User does not exist with this email"
+                });
+            }
+
+            var result = await _userManager.ChangePasswordAsync(user, changePasswordDto.CurrentPassword, changePasswordDto.NewPassword);
+
+            if (result.Succeeded)
+            {
+                return Ok(new AuthResponseDto
+                {
+                    IsSuccess = true,
+                    Message = "Password changed successfully"
+                });
+            }
+
+            return BadRequest(new AuthResponseDto
+            {
+                IsSuccess = false,
+                Message = result.Errors.FirstOrDefault()!.Description
+            });
+        }
+
+        private string GenerateRefreshToken()
+        {
+            var randomNumber = new byte[32];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomNumber);
+            return Convert.ToBase64String(randomNumber);
+        }
+
+
+
 
         private string GenerateToken(AppUser user)
         {
@@ -169,11 +323,6 @@ namespace AuthAPI.Controllers
 
             return tokenHandler.WriteToken(token);
         }
-
-
-
-
-
 
 
         //api/account/detail

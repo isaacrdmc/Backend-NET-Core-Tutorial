@@ -60,6 +60,7 @@ namespace AuthAPI.Controllers
 
 
         // Endpoint para obtener todos los roles junto con la cantidad de usuarios que pertenecen a cada uno de esos roles.
+        [AllowAnonymous]
         [HttpGet]
         public async Task<ActionResult<IEnumerable<RoleResponseDto>>> GetRoles()
         {
