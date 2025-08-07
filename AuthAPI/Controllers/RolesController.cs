@@ -65,20 +65,24 @@ namespace AuthAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<RoleResponseDto>>> GetRoles()
         {
+            var rolesList = await _roleManager.Roles.ToListAsync();
 
+            var rolesWithUsers = new List<RoleResponseDto>();
 
-            // list of roles with total users in each role 
-            // Listamos los roles que tenemos dentro de la BD
-
-            var roles = await _roleManager.Roles.Select(r => new RoleResponseDto
+            foreach (var role in rolesList)
             {
-                Id = r.Id,
-                Name = r.Name,
-                TotalUsers = _userManager.GetUsersInRoleAsync(r.Name!).Result.Count
-            }).ToListAsync();
+                var usersInRole = await _userManager.GetUsersInRoleAsync(role.Name!);
+                rolesWithUsers.Add(new RoleResponseDto
+                {
+                    Id = role.Id,
+                    Name = role.Name,
+                    TotalUsers = usersInRole.Count
+                });
+            }
 
-            return Ok(roles);
+            return Ok(rolesWithUsers);
         }
+
 
 
         // Endpoint para eliminar un rol de la Base de Datos según el ID:
