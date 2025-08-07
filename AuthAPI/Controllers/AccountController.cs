@@ -356,18 +356,34 @@ namespace AuthAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<UserDetailDto>>> GetUsers()
         {
-            var users = await _userManager.Users.Select(u => new UserDetailDto
-            {
-                Id = u.Id,
-                Email = u.Email,
-                FullName = u.FullName,
-                Roles = _userManager.GetRolesAsync(u).Result.ToArray()
-            }).ToListAsync();
+            var usersList = await _userManager.Users.ToListAsync();
 
-            return Ok(users);
+            var userDetails = new List<UserDetailDto>();
+
+            foreach (var user in usersList)
+            {
+                var roles = await _userManager.GetRolesAsync(user);
+                userDetails.Add(new UserDetailDto
+                {
+                    Id = user.Id,
+                    Email = user.Email,
+                    FullName = user.FullName,
+                    Roles = roles.ToArray()
+                });
+            }
+
+            return Ok(userDetails);
         }
 
 
+        //var users = await _userManager.Users.Select(u => new UserDetailDto
+        //{
+        //    Id = u.Id,
+        //    Email = u.Email,
+        //    FullName = u.FullName,
+        //    Roles = _userManager.GetRolesAsync(u).Result.ToArray()
+        //}).ToListAsync();
 
+        //return Ok(users);
     }
 }

@@ -13,7 +13,7 @@ using AuthAPI.Model;
 
 namespace AuthAPI.Controllers
 {
-    [Authorize(Roles = "Admin")]
+    //[Authorize(Roles = "Admin")]
     [ApiController]
     [Route("api/[controller]")]
     public class RolesController : ControllerBase
@@ -33,6 +33,7 @@ namespace AuthAPI.Controllers
 
         // Creamos un nuevo rol dentro de la base de datos:
         [HttpPost]
+        [Authorize(Roles = "Admin")]        // Indicamos que solo un usuario admin puede acceder a ese endpoint
         public async Task<IActionResult> CreateRole([FromBody] CreateRoleDto createRoleDto)
         {
             if (string.IsNullOrEmpty(createRoleDto.RoleName))
@@ -64,18 +65,28 @@ namespace AuthAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<RoleResponseDto>>> GetRoles()
         {
-            var roles = await _roleManager.Roles.Select(r => new RoleResponseDto
-            {
-                Id = r.Id,
-                Name = r.Name,
-                TotalUsers = _userManager.GetUsersInRoleAsync(r.Name!).Result.Count
-            }).ToListAsync();
+            var rolesList = await _roleManager.Roles.ToListAsync();
 
-            return Ok(roles);
+            var rolesWithUsers = new List<RoleResponseDto>();
+
+            foreach (var role in rolesList)
+            {
+                var usersInRole = await _userManager.GetUsersInRoleAsync(role.Name!);
+                rolesWithUsers.Add(new RoleResponseDto
+                {
+                    Id = role.Id,
+                    Name = role.Name,
+                    TotalUsers = usersInRole.Count
+                });
+            }
+
+            return Ok(rolesWithUsers);
         }
 
 
+
         // Endpoint para eliminar un rol de la Base de Datos según el ID:
+        [Authorize(Roles = "Admin")]        // Indicamos que solo un usuario admin puede acceder a ese endpoint
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteRole(string id)
         {
@@ -99,6 +110,7 @@ namespace AuthAPI.Controllers
 
 
         // Endpoint para asignar un rol que ya existe a un usuario por medio de sú ID:
+        [Authorize(Roles = "Admin")]        // Indicamos que solo un usuario admin puede acceder a ese endpoint
         [HttpPost("assign")]
         public async Task<IActionResult> AssignRole([FromBody] RoleAssignDto roleAssignDto)
         {
